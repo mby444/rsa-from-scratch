@@ -1,10 +1,13 @@
 """
 Tugas Kriptografi: Implementasi Algoritma RSA dari Nol
-Format: Ciphertext sebagai Hexadecimal String
 """
 
+# ==========================================
+# PART 1: MATHEMATICAL UTILITIES
+# ==========================================
+
 def is_prime(n: int) -> bool:
-    """Mengecek apakah n adalah bilangan prima menggunakan algoritma 6k +/- 1."""
+    """Mengecek apakah n bilangan prima (Efficiency: O(sqrt(n)))."""
     if n <= 1: return False
     if n <= 3: return True
     if n % 2 == 0 or n % 3 == 0: return False
@@ -14,28 +17,28 @@ def is_prime(n: int) -> bool:
         i += 6
     return True
 
-def gcd(a: int, b: int) -> int:
-    """Menghitung nilai pembagi terbesar (Greatest Common Divisor)."""
+def get_gcd(a: int, b: int) -> int:
+    """Menghitung Greatest Common Divisor (GCD)."""
     while b:
         a, b = b, a % b
     return a
 
-def extended_gcd(a: int, b: int) -> tuple[int, int, int]:
+def extended_gcd(a: int, b: int) -> tuple:
     """
-    Algoritma Euclidean Diperluas untuk mencari Modular Multiplicative Inverse.
-    Mengembalikan (gcd, x, y) sedemikian sehingga ax + by = gcd(a, b).
+    Extended Euclidean Algorithm untuk mencari Modular Inverse.
+    Digunakan untuk menghitung Private Key (d).
     """
     if a == 0:
         return b, 0, 1
-    gcd_val, x1, y1 = extended_gcd(b % a, a)
+    gcd, x1, y1 = extended_gcd(b % a, a)
     x = y1 - (b // a) * x1
     y = x1
-    return gcd_val, x, y
+    return gcd, x, y
 
-def modular_exponentiation(base: int, exp: int, mod: int) -> int:
+def modular_pow(base: int, exp: int, mod: int) -> int:
     """
-    Menghitung (base^exp) % mod secara efisien (Square-and-Multiply).
-    Menghindari overflow pada angka yang sangat besar.
+    Menghitung (base^exp) % mod menggunakan Square-and-Multiply.
+    Sangat efisien untuk menangani angka besar.
     """
     result = 1
     base %= mod
@@ -46,82 +49,93 @@ def modular_exponentiation(base: int, exp: int, mod: int) -> int:
         base = (base * base) % mod
     return result
 
-def get_modular_inverse(e: int, phi: int) -> int:
-    """Menghitung nilai d (Private Key) menggunakan Modular Multiplicative Inverse."""
-    gcd_val, x, _ = extended_gcd(e, phi)
-    if gcd_val != 1:
-        raise ValueError("Modular inverse tidak ditemukan! e dan phi harus relatif prima.")
-    return x % phi
+# ==========================================
+# PART 2: CORE RSA LOGIC
+# ==========================================
 
-def generate_key_pair(p: int, q: int) -> tuple[tuple[int, int], tuple[int, int]]:
-    """Membangkitkan pasangan kunci publik dan kunci privat."""
+def generate_keys(p: int, q: int):
+    """Membangkitkan pasangan kunci (public_key, private_key)."""
     if not (is_prime(p) and is_prime(q)):
-        raise ValueError("p dan q harus merupakan bilangan prima.")
+        raise ValueError("P dan Q harus bilangan prima!")
     if p == q:
-        raise ValueError("p dan q tidak boleh sama.")
-        
+        raise ValueError("P dan Q tidak boleh sama!")
+    
     n = p * q
     phi = (p - 1) * (q - 1)
 
-    # Memilih public exponent e
+    # Memilih e (Public Exponent)
     e = 3
-    while gcd(e, phi) != 1:
+    while get_gcd(e, phi) != 1:
         e += 2
         
-    d = get_modular_inverse(e, phi)
+    # Menghitung d (Private Exponent)
+    gcd_val, x, _ = extended_gcd(e, phi)
+    d = x % phi
+    
     return (e, n), (d, n)
 
-def encrypt(plaintext: str, public_key: tuple[int, int]) -> str:
-    """Mengenkripsi teks menjadi string hexadecimal yang dipisahkan spasi."""
+def encrypt_to_hex(message: str, public_key: tuple) -> str:
+    """Mengubah teks menjadi rangkaian string hexadecimal."""
     e, n = public_key
-    # Proses: Teks -> ASCII (ord) -> ModPow -> Hex
-    cipher_hex = [hex(modular_exponentiation(ord(char), e, n))[2:] for char in plaintext]
-    return " ".join(cipher_hex)
+    hex_list = []
+    
+    for char in message:
+        m = ord(char)                # Karakter -> ASCII
+        c = modular_pow(m, e, n)     # Rumus: c = m^e mod n
+        hex_list.append(hex(c)[2:])  # Simpan hasil dalam format hex
+        
+    return " ".join(hex_list)
 
-def decrypt(ciphertext_hex: str, private_key: tuple[int, int]) -> str:
-    """Mendekripsi string hexadecimal kembali menjadi teks asli."""
+def decrypt_from_hex(hex_str: str, private_key: tuple) -> str:
+    """Mengubah rangkaian string hexadecimal kembali ke teks asli."""
     d, n = private_key
-    try:
-        # Proses: Hex -> Int -> ModPow -> Karakter (chr)
-        hex_parts = ciphertext_hex.split()
-        decrypted_chars = [chr(modular_exponentiation(int(h, 16), d, n)) for h in hex_parts]
-        return "".join(decrypted_chars)
-    except ValueError:
-        return "[!] Gagal mendekripsi: Format ciphertext tidak valid."
+    hex_parts = hex_str.split()
+    plain_text = ""
+    
+    for h in hex_parts:
+        c = int(h, 16)               # Hex -> Decimal
+        m = modular_pow(c, d, n)     # Rumus: m = c^d mod n
+        plain_text += chr(m)         # ASCII -> Karakter
+        
+    return plain_text
+
+# ==========================================
+# PART 3: MAIN INTERFACE
+# ==========================================
 
 def main():
-    print("="*40)
-    print("        SISTEM KRIPTOGRAFI RSA     ")
-    print("="*40)
+    print("="*50)
+    print("       RSA CRYPTOSYSTEM DEMONSTRATION       ")
+    print("="*50)
     
-    # Inisialisasi prima (Default: 61 dan 53)
+    # Nilai p dan q (Bisa diganti dengan prima lain)
     p, q = 61, 53 
     
     try:
         # 1. Key Generation
-        pub_key, priv_key = generate_key_pair(p, q)
-        print(f"[+] Modulus (n)   : {pub_key[1]}")
-        print(f"[+] Kunci Publik e: {pub_key[0]}")
-        print(f"[+] Kunci Privat d: {priv_key[0]}")
+        pub_key, priv_key = generate_keys(p, q)
+        print(f"[+] Modulus (n)     : {pub_key[1]}")
+        print(f"[+] Public Key (e)  : {pub_key[0]}")
+        print(f"[+] Private Key (d) : {priv_key[0]}")
 
         # 2. Input
-        message = input("\n[>] Masukkan pesan: ")
-        if not message: return
+        original_msg = input("\n[>] Masukkan pesan teks: ")
+        if not original_msg: return
 
         # 3. Encryption
-        ciphertext = encrypt(message, pub_key)
+        ciphertext = encrypt_to_hex(original_msg, pub_key)
         print(f"\n[🔒] Ciphertext (Hex): {ciphertext}")
 
         # 4. Decryption
-        decrypted_msg = decrypt(ciphertext, priv_key)
+        decrypted_msg = decrypt_from_hex(ciphertext, priv_key)
         print(f"[🔓] Hasil Dekripsi  : {decrypted_msg}")
         
         # 5. Validation
-        if message == decrypted_msg:
-            print("\n✅ Verifikasi Sukses: Data utuh dan aman.")
-            
+        if original_msg == decrypted_msg:
+            print("\n✅ STATUS: Berhasil! Pesan identik dengan aslinya.")
+
     except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
+        print(f"\n❌ ERROR: {e}")
 
 if __name__ == "__main__":
     main()
