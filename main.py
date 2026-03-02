@@ -1,4 +1,9 @@
-def is_prime(n):
+"""
+Tugas Kriptografi: Implementasi Algoritma RSA dari Nol
+"""
+
+def is_prime(n: int) -> bool:
+    """Mengecek apakah angka n adalah bilangan prima (O(sqrt(n)))."""
     if n <= 1: return False
     if n <= 3: return True
     if n % 2 == 0 or n % 3 == 0: return False
@@ -8,109 +13,104 @@ def is_prime(n):
         i += 6
     return True
 
-def gcd(a, b):
+def gcd(a: int, b: int) -> int:
+    """Menghitung Greatest Common Divisor menggunakan Algoritma Euclidean."""
     while b:
         a, b = b, a % b
     return a
 
-def extended_gcd(a, b):
+def extended_gcd(a: int, b: int) -> tuple:
     """
-    Mengembalikan (gcd, x, y) sedemikian sehingga ax + by = gcd(a, b).
-    Dalam RSA: a adalah 'e', b adalah 'phi_n'.
-    Kita mencari 'x' yang merupakan modular inverse dari 'e'.
+    Algoritma Euclidean Diperluas untuk mencari koefisien Bezout (x, y).
+    Digunakan untuk mencari Modular Multiplicative Inverse.
     """
     if a == 0:
         return b, 0, 1
-    else:
-        gcd, x1, y1 = extended_gcd(b % a, a)
-        # Update x dan y menggunakan hasil rekursif
-        x = y1 - (b // a) * x1
-        y = x1
-        return gcd, x, y
+    gcd_val, x1, y1 = extended_gcd(b % a, a)
+    x = y1 - (b // a) * x1
+    y = x1
+    return gcd_val, x, y
 
-def power(base, exp, mod):
+def modular_exponentiation(base: int, exp: int, mod: int) -> int:
     """
-    Menghitung (base^exp) % mod secara efisien.
-    Sangat penting untuk enkripsi (M^e % n) dan dekripsi (C^d % n).
+    Menghitung (base^exp) % mod menggunakan metode Square-and-Multiply.
+    Mencegah integer overflow dan sangat efisien secara memori.
     """
-    res = 1
-    base = base % mod  # Pastikan base lebih kecil dari mod
-    
+    result = 1
+    base %= mod
     while exp > 0:
-        # Jika exp ganjil, kalikan base dengan hasil
         if exp % 2 == 1:
-            res = (res * base) % mod
-            
-        # exp harus menjadi genap sekarang
-        exp = exp // 2
+            result = (result * base) % mod
+        exp //= 2
         base = (base * base) % mod
-        
-    return res
+    return result
 
-def get_e(phi_n):
-    """
-    Mencari nilai e yang relatif prima dengan phi_n.
-    Biasanya dimulai dari angka kecil (seperti 3) untuk efisiensi.
-    """
-    def gcd(a, b):
-        while b:
-            a, b = b, a % b
-        return a
+def get_modular_inverse(e: int, phi: int) -> int:
+    """Menghitung nilai d (Private Key) sebagai kebalikan modular dari e."""
+    gcd_val, x, _ = extended_gcd(e, phi)
+    if gcd_val != 1:
+        raise ValueError("Modular inverse tidak ditemukan!")
+    return x % phi
 
-    e = 2
-    while e < phi_n:
-        if gcd(e, phi_n) == 1:
-            return e
-        e += 1
-    return None
-
-def get_d(e, phi_n):
-    """
-    Menghitung d menggunakan Extended Euclidean Algorithm.
-    d adalah inverse dari e dalam modulo phi_n.
-    """
-    gcd, x, y = extended_gcd(e, phi_n)
+def generate_key_pair(p: int, q: int) -> tuple:
+    """Menghasilkan pasangan Kunci Publik (e, n) dan Kunci Privat (d, n)."""
+    if not (is_prime(p) and is_prime(q)):
+        raise ValueError("Kedua angka p dan q harus bilangan prima.")
     
-    if gcd != 1:
-        raise ValueError("Modular inverse tidak ada (e dan phi_n tidak relatif prima)")
-    else:
-        # x bisa saja negatif, maka kita harus mengubahnya ke positif
-        # dengan cara (x % phi_n)
-        return x % phi_n
+    n = p * q
+    phi = (p - 1) * (q - 1)
 
-def gen_key():
-  p, q = 61, 53
-  n = p * q
-  phi_n = (p - 1) * (q - 1)
-  e = get_e(phi_n)
-  d = get_d(e, phi_n)
-  return e, d, n
+    # Memilih e yang relatif prima terhadap phi
+    # 65537 adalah nilai standar industri, namun kita cari yang terkecil untuk tugas
+    e = 3
+    while gcd(e, phi) != 1:
+        e += 2
+        
+    d = get_modular_inverse(e, phi)
+    return (e, n), (d, n)
 
-def encrypt(text, e, n):
-  encrypted_text = []
+def encrypt(plaintext: str, public_key: tuple) -> list:
+    """Mengubah teks menjadi daftar angka terenkripsi (Ciphertext)."""
+    e, n = public_key
+    # ord(char) mengubah karakter menjadi angka ASCII
+    return [modular_exponentiation(ord(char), e, n) for char in plaintext]
 
-  for ch in text:
-    c = power(ord(ch), e, n)
-    encrypted_text.append(c)
-
-  return encrypted_text
-
-def decrypt(ciphertext, d, n):
-  decrypted_text = ""
-
-  for num in ciphertext:
-    m = power(num, d, n)
-    decrypted_text += chr(m)
-
-  return decrypted_text
+def decrypt(ciphertext: list, private_key: tuple) -> str:
+    """Mengembalikan daftar angka menjadi teks asli (Plaintext)."""
+    d, n = private_key
+    # chr(num) mengubah angka ASCII kembali menjadi karakter
+    chars = [chr(modular_exponentiation(num, d, n)) for num in ciphertext]
+    return "".join(chars)
 
 def main():
-  user_input = input("Masukkan teks: ")
-  e, d, n = gen_key()
-  ciphertext = encrypt(user_input, e, n)
-  print("Cipertext:", ciphertext)
-  text = decrypt(ciphertext, d, n)
-  print("Decrypted text:", text)
+    print("=== PROGRAM KRIPTOGRAFI RSA (CLEAN CODE) ===")
+    
+    # Input Prima (Contoh: p=61, q=53 untuk Modulus 3233)
+    p, q = 61, 53 
+    
+    try:
+        # 1. Pembangkitan Kunci
+        public_key, private_key = generate_key_pair(p, q)
+        print(f"\n[🔑] Kunci Publik: {public_key}")
+        print(f"[🔑] Kunci Privat: {private_key}")
+
+        # 2. Input Pesan
+        message = input("\n[📝] Masukkan pesan: ")
+
+        # 3. Enkripsi
+        secret_code = encrypt(message, public_key)
+        print(f"[🔒] Ciphertext: {secret_code}")
+
+        # 4. Dekripsi
+        original_msg = decrypt(secret_code, private_key)
+        print(f"[🔓] Hasil Dekripsi: {original_msg}")
+        
+        # Validasi
+        if message == original_msg:
+            print("\n✅ Verifikasi Berhasil: Pesan identik.")
+            
+    except Exception as err:
+        print(f"\n❌ Terjadi Kesalahan: {err}")
 
 if __name__ == "__main__":
-  main()
+    main()
