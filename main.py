@@ -1,9 +1,10 @@
 """
 Tugas Kriptografi: Implementasi Algoritma RSA dari Nol
+Format: Ciphertext sebagai Hexadecimal String
 """
 
 def is_prime(n: int) -> bool:
-    """Mengecek apakah angka n adalah bilangan prima (O(sqrt(n)))."""
+    """Mengecek apakah n adalah bilangan prima menggunakan algoritma 6k +/- 1."""
     if n <= 1: return False
     if n <= 3: return True
     if n % 2 == 0 or n % 3 == 0: return False
@@ -14,15 +15,15 @@ def is_prime(n: int) -> bool:
     return True
 
 def gcd(a: int, b: int) -> int:
-    """Menghitung Greatest Common Divisor menggunakan Algoritma Euclidean."""
+    """Menghitung nilai pembagi terbesar (Greatest Common Divisor)."""
     while b:
         a, b = b, a % b
     return a
 
-def extended_gcd(a: int, b: int) -> tuple:
+def extended_gcd(a: int, b: int) -> tuple[int, int, int]:
     """
-    Algoritma Euclidean Diperluas untuk mencari koefisien Bezout (x, y).
-    Digunakan untuk mencari Modular Multiplicative Inverse.
+    Algoritma Euclidean Diperluas untuk mencari Modular Multiplicative Inverse.
+    Mengembalikan (gcd, x, y) sedemikian sehingga ax + by = gcd(a, b).
     """
     if a == 0:
         return b, 0, 1
@@ -33,8 +34,8 @@ def extended_gcd(a: int, b: int) -> tuple:
 
 def modular_exponentiation(base: int, exp: int, mod: int) -> int:
     """
-    Menghitung (base^exp) % mod menggunakan metode Square-and-Multiply.
-    Mencegah integer overflow dan sangat efisien secara memori.
+    Menghitung (base^exp) % mod secara efisien (Square-and-Multiply).
+    Menghindari overflow pada angka yang sangat besar.
     """
     result = 1
     base %= mod
@@ -46,22 +47,23 @@ def modular_exponentiation(base: int, exp: int, mod: int) -> int:
     return result
 
 def get_modular_inverse(e: int, phi: int) -> int:
-    """Menghitung nilai d (Private Key) sebagai kebalikan modular dari e."""
+    """Menghitung nilai d (Private Key) menggunakan Modular Multiplicative Inverse."""
     gcd_val, x, _ = extended_gcd(e, phi)
     if gcd_val != 1:
-        raise ValueError("Modular inverse tidak ditemukan!")
+        raise ValueError("Modular inverse tidak ditemukan! e dan phi harus relatif prima.")
     return x % phi
 
-def generate_key_pair(p: int, q: int) -> tuple:
-    """Menghasilkan pasangan Kunci Publik (e, n) dan Kunci Privat (d, n)."""
+def generate_key_pair(p: int, q: int) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Membangkitkan pasangan kunci publik dan kunci privat."""
     if not (is_prime(p) and is_prime(q)):
-        raise ValueError("Kedua angka p dan q harus bilangan prima.")
-    
+        raise ValueError("p dan q harus merupakan bilangan prima.")
+    if p == q:
+        raise ValueError("p dan q tidak boleh sama.")
+        
     n = p * q
     phi = (p - 1) * (q - 1)
 
-    # Memilih e yang relatif prima terhadap phi
-    # 65537 adalah nilai standar industri, namun kita cari yang terkecil untuk tugas
+    # Memilih public exponent e
     e = 3
     while gcd(e, phi) != 1:
         e += 2
@@ -69,48 +71,57 @@ def generate_key_pair(p: int, q: int) -> tuple:
     d = get_modular_inverse(e, phi)
     return (e, n), (d, n)
 
-def encrypt(plaintext: str, public_key: tuple) -> list:
-    """Mengubah teks menjadi daftar angka terenkripsi (Ciphertext)."""
+def encrypt(plaintext: str, public_key: tuple[int, int]) -> str:
+    """Mengenkripsi teks menjadi string hexadecimal yang dipisahkan spasi."""
     e, n = public_key
-    # ord(char) mengubah karakter menjadi angka ASCII
-    return [modular_exponentiation(ord(char), e, n) for char in plaintext]
+    # Proses: Teks -> ASCII (ord) -> ModPow -> Hex
+    cipher_hex = [hex(modular_exponentiation(ord(char), e, n))[2:] for char in plaintext]
+    return " ".join(cipher_hex)
 
-def decrypt(ciphertext: list, private_key: tuple) -> str:
-    """Mengembalikan daftar angka menjadi teks asli (Plaintext)."""
+def decrypt(ciphertext_hex: str, private_key: tuple[int, int]) -> str:
+    """Mendekripsi string hexadecimal kembali menjadi teks asli."""
     d, n = private_key
-    # chr(num) mengubah angka ASCII kembali menjadi karakter
-    chars = [chr(modular_exponentiation(num, d, n)) for num in ciphertext]
-    return "".join(chars)
+    try:
+        # Proses: Hex -> Int -> ModPow -> Karakter (chr)
+        hex_parts = ciphertext_hex.split()
+        decrypted_chars = [chr(modular_exponentiation(int(h, 16), d, n)) for h in hex_parts]
+        return "".join(decrypted_chars)
+    except ValueError:
+        return "[!] Gagal mendekripsi: Format ciphertext tidak valid."
 
 def main():
-    print("=== PROGRAM KRIPTOGRAFI RSA (CLEAN CODE) ===")
+    print("="*40)
+    print("        SISTEM KRIPTOGRAFI RSA     ")
+    print("="*40)
     
-    # Input Prima (Contoh: p=61, q=53 untuk Modulus 3233)
+    # Inisialisasi prima (Default: 61 dan 53)
     p, q = 61, 53 
     
     try:
-        # 1. Pembangkitan Kunci
-        public_key, private_key = generate_key_pair(p, q)
-        print(f"\n[🔑] Kunci Publik: {public_key}")
-        print(f"[🔑] Kunci Privat: {private_key}")
+        # 1. Key Generation
+        pub_key, priv_key = generate_key_pair(p, q)
+        print(f"[+] Modulus (n)   : {pub_key[1]}")
+        print(f"[+] Kunci Publik e: {pub_key[0]}")
+        print(f"[+] Kunci Privat d: {priv_key[0]}")
 
-        # 2. Input Pesan
-        message = input("\n[📝] Masukkan pesan: ")
+        # 2. Input
+        message = input("\n[>] Masukkan pesan: ")
+        if not message: return
 
-        # 3. Enkripsi
-        secret_code = encrypt(message, public_key)
-        print(f"[🔒] Ciphertext: {secret_code}")
+        # 3. Encryption
+        ciphertext = encrypt(message, pub_key)
+        print(f"\n[🔒] Ciphertext (Hex): {ciphertext}")
 
-        # 4. Dekripsi
-        original_msg = decrypt(secret_code, private_key)
-        print(f"[🔓] Hasil Dekripsi: {original_msg}")
+        # 4. Decryption
+        decrypted_msg = decrypt(ciphertext, priv_key)
+        print(f"[🔓] Hasil Dekripsi  : {decrypted_msg}")
         
-        # Validasi
-        if message == original_msg:
-            print("\n✅ Verifikasi Berhasil: Pesan identik.")
+        # 5. Validation
+        if message == decrypted_msg:
+            print("\n✅ Verifikasi Sukses: Data utuh dan aman.")
             
-    except Exception as err:
-        print(f"\n❌ Terjadi Kesalahan: {err}")
+    except Exception as e:
+        print(f"\n❌ ERROR: {str(e)}")
 
 if __name__ == "__main__":
     main()
